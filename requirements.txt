@@ -1,0 +1,3 @@
+# Package versions specified are known to work with this software
+boto3==1.4.1
+botocore==1.4.77
