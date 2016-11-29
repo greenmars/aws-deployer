@@ -123,6 +123,8 @@ class AppDeployer(object):
                  no_db_migrations, db_migrator, no_static, static_src_root,
                  update_distro, change_cloudfront_origin):
         
+        self.stack_name = stack_name
+        
         if os.path.exists(config_path) and os.path.isfile(config_path):
             try:
                 with open(config_path, 'rb') as f:
@@ -142,6 +144,7 @@ class AppDeployer(object):
                     conf_dict = yaml.load(f)
                     self.stack_vars = conf_dict['%s-vars' % self.stack_name]
             else:
+                logging.warn("Could not find path for stack-specific variables: %s" % stack_vars_path)
                 self.stack_vars = {}
         else:
             self.stack_vars = {}
@@ -227,7 +230,6 @@ class AppDeployer(object):
     def get_dist_for_stack(self):
         bucket_name = self.get_static_bucket_name()
         
-        
         # 1. Get all distributions
         # 2. Find one whose origin starts with 'arm-static-<stack>'
         origin_prefix = bucket_name
@@ -290,7 +292,7 @@ class AppDeployer(object):
         return "/".join([self.deploy_configs['cfn-template-releases-path'], "_".join([self.release_id, basename(filename)])])
         # return "/".join([self.TEMPLATE_DEST_PATH, "_".join([self.release_id, basename(filename)])])
     
-    def make_static_s3_key(self, filename, url_encode=False):
+    def make_static_s3_key(self, filename, url_encode=False, prefix=''):
         # Find part of path after static src root
         relative_path = filename[len(self.static_src_root):]
         if relative_path.startswith(os.path.sep):
@@ -298,7 +300,7 @@ class AppDeployer(object):
         
         path_parts = relative_path.split(os.path.sep)
         
-        dest_path_parts = [self.release_id] + path_parts
+        dest_path_parts = [self.release_id] + [prefix] + path_parts
     
         # Key should be <release-id>/static/<remainder>
         keyname = "/".join(dest_path_parts)
@@ -345,7 +347,10 @@ class AppDeployer(object):
         except:
             logging.warn("Skipping upload of [%s], mime type could not be determined." % src_path)
             
-        keyname = self.make_static_s3_key(src_path)
+        prefix = ''
+        if 'static-prefix' in self.deploy_configs:
+            prefix = self.deploy_configs['static-prefix']
+        keyname = self.make_static_s3_key(src_path, prefix=prefix)
         
         if self.dry_run:
             if content_type:
@@ -476,14 +481,16 @@ class AppDeployer(object):
         bucket_name = self.get_static_bucket_name()
         bucket = s3.Bucket(bucket_name)
         result = bucket.meta.client.list_objects(Bucket=bucket.name, Delimiter='/')
-        for o in result.get('CommonPrefixes'):
-            release = o.get('Prefix')
-            if curr_origin_path.strip('/') in release.strip('/'):
-                release_list.append("%s (current)" % release)
-            else:
-                release_list.append(release)
-            if self.release_id in release:
-                release_exists = True
+        prefixes = result.get('CommonPrefixes')
+        if prefixes:
+            for o in prefixes:
+                release = o.get('Prefix')
+                if curr_origin_path.strip('/') in release.strip('/'):
+                    release_list.append("%s (current)" % release)
+                else:
+                    release_list.append(release)
+                if self.release_id in release:
+                    release_exists = True
         
         msg = "Static releases in stack [%s]:\n\t%s" % (self.stack_name, "\n\t".join(release_list))
         logging.info(msg)
@@ -653,7 +660,7 @@ class AppDeployer(object):
                 logging.exception("Problem validating template %s." % root_template_url)
                 return
             
-            for cst_url in child_stack_template_urls:
+            for cst_name, cst_url in child_stack_template_urls.items():
                 try:
                     resp2 = cfn_client.validate_template(TemplateURL=cst_url)
                 except:
@@ -703,16 +710,18 @@ class AppDeployer(object):
             params[temp_params['release-notes-parameter-name']] = "No release notes"
             params[temp_params['root-stack-parameter-name']] = self.stack_name
             params[temp_params['app-bucket-parameter-name']] = dest_bucket
-            params[temp_params['app-bucket-arn-param-name']] = "arn:aws:s3:::%s-build-arm-com/*" % self.stack_name
+            params[temp_params['app-bucket-arn-param-name']] = "arn:aws:s3:::%s/*" % self.get_app_bucket_name()
             
             for nsf_fname, nsf_url in child_stack_template_urls.items():
                 param_name = temp_params['nested-stack-param-name-dict'][nsf_fname]
                 params[param_name] = nsf_url
 
             ### Add stack-specific vars
-            for key, val in self.stack_vars.items():
-                if type(val) == basestring:
-                    params[key] = "'''%s'''" % val
+            for key, val_dict in self.stack_vars.items():
+                val = val_dict['value']
+                vtype = val_dict['type']
+                if vtype in ['str', 'unicode']:
+                    params[key] = "'%s'" % val
                 else:
                     params[key] = "%s" % val
         
@@ -728,7 +737,7 @@ class AppDeployer(object):
 
 if __name__ == "__main__":
     
-    arg_parser = ArgumentParser()
+    arg_parser = ArgumentParser("Deploy to AWS. Please be sure to use AWS_CONFIG_FILE=<file> for your credentials")
     arg_parser.add_argument("--config-path", default="./scripts/deploy-config.yaml",
                             help="Config for this specific company, project, and product.")
     arg_parser.add_argument("--static-src-root",
