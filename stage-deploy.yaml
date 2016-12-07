@@ -1,0 +1,19 @@
+stage-vars:
+    FedexAccountNum:
+        value: "1"
+        type: quoted_str
+    FedexKey:
+        value: "vV"
+        type: quoted_str
+    FedexPassword:
+        value: "vN"
+        type: quoted_str
+    FedexMeterNum:
+        value: "9"
+        type: quoted_str
+    FedexUseTestServer:
+        value: True
+        type: bool
+    ElasticSearchHost:
+        value: "https://97528c2:510f0105d0@3a7721e6.qb0x.com:32709"
+        type: quoted_str

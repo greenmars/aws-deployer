@@ -292,7 +292,7 @@ class AppDeployer(object):
         return "/".join([self.deploy_configs['cfn-template-releases-path'], "_".join([self.release_id, basename(filename)])])
         # return "/".join([self.TEMPLATE_DEST_PATH, "_".join([self.release_id, basename(filename)])])
     
-    def make_static_s3_key(self, filename, url_encode=False, prefix=''):
+    def make_static_s3_key(self, filename, url_encode=False):
         # Find part of path after static src root
         relative_path = filename[len(self.static_src_root):]
         if relative_path.startswith(os.path.sep):
@@ -300,12 +300,22 @@ class AppDeployer(object):
         
         path_parts = relative_path.split(os.path.sep)
         
-        dest_path_parts = [self.release_id] + [prefix] + path_parts
+        prefix = self.get_static_prefix()
+        if prefix:
+            dest_path_parts = [self.release_id] + [prefix] + path_parts
+        else:
+            dest_path_parts = [self.release_id] + path_parts
     
         # Key should be <release-id>/static/<remainder>
         keyname = "/".join(dest_path_parts)
         
         return keyname
+    
+    def get_static_prefix(self):
+        prefix = None
+        if 'static-prefix' in self.deploy_configs:
+            prefix = self.deploy_configs['static-prefix']
+        return prefix
     
 
     def upload(self, bucket_name, filename, content_type, key_maker):
@@ -346,11 +356,9 @@ class AppDeployer(object):
             content_type = self.get_mime_type(src_path)
         except:
             logging.warn("Skipping upload of [%s], mime type could not be determined." % src_path)
-            
-        prefix = ''
-        if 'static-prefix' in self.deploy_configs:
-            prefix = self.deploy_configs['static-prefix']
-        keyname = self.make_static_s3_key(src_path, prefix=prefix)
+        
+        prefix = self.get_static_prefix()
+        keyname = self.make_static_s3_key(src_path)
         
         if self.dry_run:
             if content_type:
@@ -715,12 +723,20 @@ class AppDeployer(object):
             for nsf_fname, nsf_url in child_stack_template_urls.items():
                 param_name = temp_params['nested-stack-param-name-dict'][nsf_fname]
                 params[param_name] = nsf_url
+                
+            """
+            Valid types:
+            str
+            int
+            bool
+            quoted_str
+            """
 
             ### Add stack-specific vars
             for key, val_dict in self.stack_vars.items():
                 val = val_dict['value']
                 vtype = val_dict['type']
-                if vtype in ['str', 'unicode']:
+                if vtype in ['quoted_str', 'unicode']:
                     params[key] = "'%s'" % val
                 else:
                     params[key] = "%s" % val
