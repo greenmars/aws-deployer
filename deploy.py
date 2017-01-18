@@ -20,6 +20,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import os
+import sys
 import time
 import logging
 import uuid
@@ -28,6 +29,7 @@ import yaml
 from argparse import ArgumentParser, FileType
 from distutils.core import run_setup
 from sys import exit
+from hashlib import sha1
 from os import environ
 from os.path import basename
 import boto3
@@ -149,12 +151,40 @@ class AppDeployer(object):
         else:
             self.stack_vars = {}
         
+        self.pre_deploy_hooks = {}
+        
+        if 'pre-deploy-hook-root' in self.deploy_configs:
+            if 'pre-deploy-hooks' in self.deploy_configs:
+                import importlib
+                hook_root = self.deploy_configs['pre-deploy-hook-root']
+                sys.path.append(hook_root)
+                
+                hooks = self.deploy_configs['pre-deploy-hooks']
+                for hook_name, hook_details in hooks.items():
+                    hook_file = hook_details['hook-file']
+                    hook_class = hook_details['hook-class']
+                    hook_params = hook_details['params']
+                    
+                    try:
+                        hook_mod = importlib.import_module(hook_file.replace(".py", ""))
+                        try:
+                            hook_cls = getattr(hook_mod, hook_class)
+                            self.pre_deploy_hooks[hook_name] = {
+                                'cls': hook_cls,
+                                'params': hook_params
+                            }
+                        except AttributeError, ex:
+                            logging.error("Unable to find hook class %s in hook module %s, skipping." % (hook_cls, hook_mod))
+                    except ImportError, ex:
+                        logging.error("Unable to import hook module %s, skipping." % hook_file)
+
         self.dry_run = dry_run
         self.verbose = verbose
         self.deploy_app = deploy_app
         self.template = template
         self.template_url = template_url
         self.parameters = parameters
+        self.static_versioning = None
         
         if not no_db_migrations:
             self.db_migrator = db_migrator
@@ -195,6 +225,8 @@ class AppDeployer(object):
         self.deploy_lib = DeployLib(self.product, self.db_migrator)
         (self.release_id, self.pkg_name, self.pkg_ver) = \
             self.deploy_lib.gen_release_id(self.stack_name, self.stamp, is_blessed=self.blessed)
+        if self.update_distro:
+            self.static_versioning = sha1(self.release_id).hexdigest()[:10]
     
     def get_app_bucket_name(self):
         # return "%s-%s" % (self.stack_name, self.APP_DEST_BUCKET_SUFFIX)
@@ -248,6 +280,27 @@ class AppDeployer(object):
                                 if domain_name.startswith(origin_prefix):
                                     return cf.get_distribution(Id=dist_id)
         return None
+    
+    def exec_pre_deploy_hooks(self):
+        if self.pre_deploy_hooks:
+            for hook_name, hook_details in self.pre_deploy_hooks.items():
+                cls = hook_details['cls']
+                params = hook_details['params']
+                
+                # Attempt to instantiate hook class passing self
+                try:
+                    hook_obj = cls(self)
+                    
+                    try:
+                        # Attempt to run hook obj
+                        hook_obj.run(params)
+                    except:
+                        logging.exception("Exception running hook")
+                except:
+                    logging.exception("Problem instantiating hook class %s, skipping execution." % cls)
+                pass
+        else:
+            logging.info("No pre-deploy hooks specified!")
 
     def build(self):
         setup_params = self.deploy_configs['setup-parameters']
@@ -327,7 +380,7 @@ class AppDeployer(object):
         
         logging.info("About to upload file to S3 with key: %s" % raw_keyname)
 
-        transfer.upload_file(filename, bucket_name, raw_keyname, extra_args={'ContentType': content_type, 'CacheControl': 'max-age=86400'})
+        transfer.upload_file(filename, bucket_name, raw_keyname, extra_args={'ContentType': content_type, 'CacheControl': 'max-age=604801'})
         
         ret_url = "".join(["http://", bucket_name, ".s3.amazonaws.com/", url_encoded_keyname])
 
@@ -713,6 +766,8 @@ class AppDeployer(object):
 
             params[temp_params['application-source-parameter-name']] = url
             params[temp_params['release-id-parameter-name']] = self.release_id
+            if self.static_versioning is not None:
+                params[temp_params['static-url-versioning']] = self.static_versioning
 
             ## TODO: Slurp a file of release notes or the git change log and put it here
             params[temp_params['release-notes-parameter-name']] = "No release notes"
@@ -800,6 +855,8 @@ if __name__ == "__main__":
     any_app = deployer.deploy_app
     
     try:
+        
+        
         if any_static:
             deployer.deploy_static()
 

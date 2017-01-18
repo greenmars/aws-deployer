@@ -1,0 +1,44 @@
+static-bucket-format: "histowiz-static-%(stack_name)s"
+app-bucket-format: "%(stack_name)s-build-histowiz-com"
+app-releases-path: "app"
+cfn-template-releases-path: "cfn-configs"
+root-template-name: "histowiz-cfn-root.json"
+static-src-root: "histowiz/static"
+static-prefix: "static"
+stack-vars-root: "scripts/deployment"
+cfn-template-root-path:
+    - .
+    - cfn-configs
+template-parameter-names:
+    application-source-parameter-name: ApplicationSource
+    release-id-parameter-name: ReleaseID
+    release-notes-parameter-name: ReleaseNotes
+    root-stack-parameter-name: EnvironmentName
+    app-bucket-parameter-name: BuildBucketName
+    app-bucket-arn-param-name: BuildBucketAccessArn
+setup-parameters:
+    author-name: Dave Jackson
+    author-email: dej@greenmars.consulting
+    product-url: https://www.histowiz.com
+    search-path-exclusions:
+        - static
+    console-scripts:
+        histowiz-queue: "histowiz.queue:main"
+        histowiz-imageworker: "histowiz.imageworker:main"
+        histowiz-imageprocessor: "histowiz.imageprocessor:main"
+        histowiz-storage: "histowiz.storage:main"
+        histowiz-sliderestore: "histowiz.sliderestore:main"
+        histowiz-slidedzirestore: "histowiz.slidedzirestore:main"
+        histowiz-slidearchive: "histowiz.slidearchive:main"
+        histowiz-quickbooksutil: "histowiz.quickbooksutil:main"
+        histowiz-slideupload: "histowiz.slideupload:main"
+        histowiz-onepagecrm: "histowiz.onepage:main"
+        histowiz-backlogrestore: "histowiz.backlogrestore:main"
+        histowiz-emails: "histowiz.emails:main"
+        histowiz-orderdelwarn: "histowiz.order_delete_warn:main"
+        histowiz-update_antigens: "histowiz.update_antigens:main"
+        histowiz-update_search_indices: "histowiz.update_search_indices:main"
+        histowiz-classify: "histowiz.controllers.classifier:main"
+    static-folder-exclusions:
+        - download
+    cfn-template-root-path: arm_app/conf/cfn

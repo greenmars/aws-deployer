@@ -1,0 +1,34 @@
+static-bucket-format: "myapp-static-%(stack_name)s"
+app-bucket-format: "%(stack_name)s-build-myapp-com"
+app-releases-path: "app"
+cfn-template-releases-path: "cfn-configs"
+root-template-name: "myapp-cfn-root.json"
+static-src-root: "./static"
+stack-vars-root: "scripts/"
+db-migrator: django
+static-folder-exclusions:
+    - download
+cfn-template-root-path:
+    - .
+    - myapp
+    - conf
+    - cfn
+nested-stack-templates:
+    - "myapp-cfn-queue-processor.json"
+template-parameter-names:
+    application-source-parameter-name: ApplicationSource
+    release-id-parameter-name: ReleaseID
+    release-notes-parameter-name: ReleaseNotes
+    root-stack-parameter-name: EnvironmentName
+    app-bucket-parameter-name: BuildBucketName
+    app-bucket-arn-param-name: BuildBucketAccessArn
+    nested-stack-param-name-dict:
+        arm-cfn-queue-processor.json: QueueTemplateURL
+setup-parameters:
+    author-name: Dave Jackson
+    author-email: dej@greenmars.consulting
+    product-url: https://www.greenmars.consulting
+    search-path-exclusions:
+        - static
+    console-scripts:
+        myapp-queue-processor: "myapp.run.queue_processor:main"

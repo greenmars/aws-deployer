@@ -1,0 +1,46 @@
+static-bucket-format: "arm-static-%(stack_name)s"
+app-bucket-format: "%(stack_name)s-build-arm-com"
+app-releases-path: "app"
+cfn-template-releases-path: "cfn-configs"
+root-template-name: "arm-cfn-root.json"
+db-migrator: django
+static-src-root: "./static"
+db-migrator: django
+static-prefix: "static"
+stack-vars-root: "./scripts"
+static-folder-exclusions:
+    - download
+cfn-template-root-path:
+    - .
+    - arm_app
+    - conf
+    - cfn
+pre-deploy-hook-root: "./scripts/pre-deploy"
+pre-deploy-hooks:
+    blog-build:
+        hook-file: blogbuild.py
+        hook-class: BlogBuilder
+        params:
+            blog-repo-root: "../blog"
+            blog-output-name: "blog.adaptrm.com-%s.tgz"
+            blog-output-destination: "./
+nested-stack-templates:
+    - "arm-cfn-queue-processor.json"
+template-parameter-names:
+    application-source-parameter-name: ApplicationSource
+    release-id-parameter-name: ReleaseID
+    release-notes-parameter-name: ReleaseNotes
+    root-stack-parameter-name: EnvironmentName
+    app-bucket-parameter-name: BuildBucketName
+    app-bucket-arn-param-name: BuildBucketAccessArn
+    static-url-versioning: StaticVersion
+    nested-stack-param-name-dict:
+        arm-cfn-queue-processor.json: QueueTemplateURL
+setup-parameters:
+    author-name: Dave Jackson
+    author-email: dej@greenmars.consulting
+    product-url: https://www.adaptrm.com
+    search-path-exclusions:
+        - static
+    console-scripts:
+        arm-queue-processor: "arm.run.queue_processor:main"
